@@ -63,6 +63,8 @@ function applyChange_(change) {
       return addStudentEverywhere_(change.student);
     case 'removeStudent':
       return clearStudentEverywhere_(change.student);
+    case 'readAttendance':
+      return readAttendance_(change.date);
     default:
       return { ok: false, type: change.type, error: 'Bilinmeyen degisiklik tipi' };
   }
@@ -199,6 +201,36 @@ function normalizeName_(value) {
     .replace(/İ/g, 'i')
     .replace(/I/g, 'ı')
     .toLowerCase();
+}
+
+function readAttendance_(date) {
+  var sheet = getSheet_(SHEETS.attendance);
+  var headerRow = TABLE_FIRST_ROW - 1;
+  var lastCol = sheet.getLastColumn();
+  if (lastCol < 4) return { ok: true, type: 'readAttendance', date: date, data: {} };
+
+  var headers = sheet.getRange(headerRow, 4, 1, lastCol - 3).getValues()[0];
+  var col = -1;
+  var clean = String(date || '').trim();
+  for (var i = 0; i < headers.length; i++) {
+    if (String(headers[i] || '').trim() === clean) { col = 4 + i; break; }
+  }
+  if (col < 0) return { ok: true, type: 'readAttendance', date: date, data: {} };
+
+  var lastRow = sheet.getLastRow();
+  if (lastRow < TABLE_FIRST_ROW) return { ok: true, type: 'readAttendance', date: date, data: {} };
+
+  var rows = lastRow - TABLE_FIRST_ROW + 1;
+  var names = sheet.getRange(TABLE_FIRST_ROW, NAME_COL, rows, 1).getValues();
+  var values = sheet.getRange(TABLE_FIRST_ROW, col, rows, 1).getValues();
+
+  var data = {};
+  for (var i = 0; i < names.length; i++) {
+    var name = String(names[i][0] || '').trim();
+    var val = String(values[i][0] || '').trim();
+    if (name && val) data[name] = val;
+  }
+  return { ok: true, type: 'readAttendance', date: date, data: data };
 }
 
 function getSheet_(name) {
