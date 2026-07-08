@@ -65,6 +65,8 @@ function applyChange_(change) {
       return clearStudentEverywhere_(change.student);
     case 'readAttendance':
       return readAttendance_(change.date);
+    case 'readStudent':
+      return readStudent_(change.student);
     default:
       return { ok: false, type: change.type, error: 'Bilinmeyen degisiklik tipi' };
   }
@@ -247,6 +249,59 @@ function readAttendance_(date) {
     if (name && val) data[name] = val;
   }
   return { ok: true, type: 'readAttendance', date: date, data: data };
+}
+
+function readStudent_(student) {
+  if (!student) return { ok: false, error: 'Ogrenci adi bos' };
+  var result = { ok: true, type: 'readStudent', student: student, nurlu: {}, sure: {}, elifba: '', namaz: 0 };
+
+  // Nurlu cards (4 sheets, 5 cards each, 4 items per card)
+  for (var si = 0; si < SHEETS.nurlu.length; si++) {
+    var sheet = getSheet_(SHEETS.nurlu[si]);
+    var row = findStudentRow_(sheet, student, NAME_COL, TABLE_FIRST_ROW);
+    if (!row) continue;
+    var lastCol = sheet.getLastColumn();
+    if (lastCol < 3) continue;
+    var vals = sheet.getRange(row, 3, 1, lastCol - 2).getValues()[0];
+    for (var ci = 0; ci < 5; ci++) {
+      var cardNo = si * 5 + ci + 1;
+      for (var ii = 0; ii < 4; ii++) {
+        var colIdx = ci * 4 + ii;
+        var v = String(vals[colIdx] || '').trim();
+        if (v) result.nurlu['c' + cardNo + '_' + ii] = v;
+      }
+    }
+  }
+
+  // Sure (Ezber Takip)
+  var sureSheet = getSheet_(SHEETS.sure);
+  var sureRow = findStudentRow_(sureSheet, student, NAME_COL, TABLE_FIRST_ROW);
+  if (sureRow) {
+    var sureLast = sureSheet.getLastColumn();
+    if (sureLast >= 3) {
+      var sureVals = sureSheet.getRange(sureRow, 3, 1, sureLast - 2).getValues()[0];
+      for (var i = 0; i < sureVals.length; i++) {
+        var sv = String(sureVals[i] || '').trim();
+        if (sv) result.sure[i] = sv;
+      }
+    }
+  }
+
+  // Elif-Ba
+  var elifbaSheet = getSheet_(SHEETS.elifba);
+  var elifbaRow = findStudentRow_(elifbaSheet, student, 1, 4);
+  if (elifbaRow) {
+    result.elifba = String(elifbaSheet.getRange(elifbaRow, 2).getValue() || '').trim();
+  }
+
+  // Namaz
+  var namazSheet = getSheet_(SHEETS.namaz);
+  var namazRow = findStudentRow_(namazSheet, student, NAME_COL, TABLE_FIRST_ROW);
+  if (namazRow) {
+    result.namaz = Number(namazSheet.getRange(namazRow, 3).getValue()) || 0;
+  }
+
+  return result;
 }
 
 function getSheet_(name) {
