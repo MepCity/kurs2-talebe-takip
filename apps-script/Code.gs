@@ -33,6 +33,13 @@ function doGet() {
   return json_({ ok: true, message: 'Talebe Takip baglantisi hazir.' });
 }
 
+// E-Tabloda elle yapilan her duzenlemede calisir (basit tetikleyici).
+// Versiyon sayacini artirir ki acik telefonlar birkac saniye icinde
+// degisikligi cekip onbelleklerini tazelesin.
+function onEdit(e) {
+  try { bumpVersion_(); } catch (err) {}
+}
+
 function doPost(e) {
   try {
     const payload = JSON.parse((e && e.postData && e.postData.contents) || '{}');
