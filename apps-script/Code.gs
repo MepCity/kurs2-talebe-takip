@@ -28,18 +28,28 @@ function doGet() {
 }
 
 function doPost(e) {
-  const lock = LockService.getDocumentLock();
-  lock.waitLock(30000);
-
   try {
     const payload = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     const changes = Array.isArray(payload.changes) ? payload.changes : [];
-    const results = changes.map(applyChange_);
-    return json_({ ok: true, applied: results.length, results });
+
+    var readOnly = changes.every(function(c) {
+      return c && (c.type === 'readAttendance' || c.type === 'readAllAttendance' || c.type === 'readStudent');
+    });
+
+    var lock = null;
+    if (!readOnly) {
+      lock = LockService.getDocumentLock();
+      lock.waitLock(30000);
+    }
+
+    try {
+      const results = changes.map(applyChange_);
+      return json_({ ok: true, applied: results.length, results });
+    } finally {
+      if (lock) lock.releaseLock();
+    }
   } catch (err) {
     return json_({ ok: false, error: String(err && err.message ? err.message : err) });
-  } finally {
-    lock.releaseLock();
   }
 }
 
@@ -263,34 +273,34 @@ function readAttendance_(date) {
 
 function readAllAttendance_() {
   var sheet = getSheet_(SHEETS.attendance);
-  var headerRow = 2;
   var lastCol = sheet.getLastColumn();
   var lastRow = sheet.getLastRow();
+  var rows = lastRow >= TABLE_FIRST_ROW ? lastRow - TABLE_FIRST_ROW + 1 : 0;
 
   var allStudents = [];
-  if (lastRow >= TABLE_FIRST_ROW) {
-    var nameVals = sheet.getRange(TABLE_FIRST_ROW, NAME_COL, lastRow - TABLE_FIRST_ROW + 1, 1).getValues();
-    for (var k = 0; k < nameVals.length; k++) {
-      var n = String(nameVals[k][0] || '').trim();
-      if (n) allStudents.push(n);
-    }
-  }
-
   var dates = [];
   var attendance = {};
-  if (lastCol >= 4 && allStudents.length > 0) {
-    var headers = sheet.getRange(headerRow, 4, 1, lastCol - 3).getValues()[0];
-    var rows = lastRow - TABLE_FIRST_ROW + 1;
-    var allVals = sheet.getRange(TABLE_FIRST_ROW, 4, rows, lastCol - 3).getValues();
-    for (var c = 0; c < headers.length; c++) {
-      var label = normalizeHeader_(headers[c]);
-      if (!label) continue;
-      dates.push(label);
-      for (var r = 0; r < allStudents.length; r++) {
-        var v = String(allVals[r][c] || '').trim();
-        if (v) {
-          if (!attendance[allStudents[r]]) attendance[allStudents[r]] = {};
-          attendance[allStudents[r]][label] = v;
+
+  if (rows > 0 && lastCol >= NAME_COL) {
+    var block = sheet.getRange(TABLE_FIRST_ROW, NAME_COL, rows, lastCol - NAME_COL + 1).getValues();
+    for (var k = 0; k < block.length; k++) {
+      var n = String(block[k][0] || '').trim();
+      if (n) allStudents.push(n);
+    }
+
+    if (lastCol >= 4) {
+      var headers = sheet.getRange(2, 4, 1, lastCol - 3).getValues()[0];
+      var dataOffset = 4 - NAME_COL;
+      for (var c = 0; c < headers.length; c++) {
+        var label = normalizeHeader_(headers[c]);
+        if (!label) continue;
+        dates.push(label);
+        for (var r = 0; r < allStudents.length; r++) {
+          var v = String(block[r][dataOffset + c] || '').trim();
+          if (v) {
+            if (!attendance[allStudents[r]]) attendance[allStudents[r]] = {};
+            attendance[allStudents[r]][label] = v;
+          }
         }
       }
     }
