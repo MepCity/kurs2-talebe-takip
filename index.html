@@ -129,7 +129,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       'body{background:radial-gradient(circle at 20% 0%,rgba(10,102,255,.16),transparent 28%),linear-gradient(180deg,#f7fbff 0%,#ffffff 56%)!important;color:var(--tt-ink);}\n' +
       'body:before{content:"";position:fixed;inset:0;pointer-events:none;background:linear-gradient(180deg,rgba(255,255,255,.2),rgba(255,255,255,0));z-index:0;}\n' +
       'body>div:not([id^="__"]):not(.tt-bottom-nav-proxy){animation:tt-app-in .52s cubic-bezier(.2,.8,.2,1) both;}\n' +
-      'x-dc,x-dc>*{transform:none!important;}\n' +
+      '#dc-root,#dc-root>.sc-host{transform:none!important;will-change:auto!important;filter:none!important;}\n' +
       'button,input{transition:transform .18s cubic-bezier(.2,.8,.2,1),box-shadow .18s ease,border-color .18s ease,background-color .18s ease,opacity .18s ease;}\n' +
       'button:active{transform:scale(.97);}button:hover{box-shadow:0 10px 26px rgba(15,23,42,.08);}\n' +
       'input:focus{box-shadow:0 0 0 4px rgba(10,102,255,.11),0 12px 30px rgba(15,23,42,.06)!important;border-color:rgba(10,102,255,.55)!important;}\n' +
@@ -150,8 +150,8 @@ document.addEventListener('DOMContentLoaded', async function() {
       '.tt-teacher-input{flex:1;min-width:0;min-height:48px;border:1px solid rgba(15,23,42,.1);border-radius:16px;padding:0 14px;background:#fff;font:600 14px -apple-system,BlinkMacSystemFont,"Public Sans",sans-serif;outline:none;}\n' +
       '.tt-teacher-add{min-height:48px;border:0;border-radius:16px;background:#0a66ff;color:white;padding:0 16px;font:800 14px -apple-system,BlinkMacSystemFont,"Public Sans",sans-serif;cursor:pointer;}\n' +
       '.tt-teacher-note{margin:14px 2px 2px;font:500 12px/17px -apple-system,BlinkMacSystemFont,"Public Sans",sans-serif;color:#94a3b8;}\n' +
-      '@keyframes tt-app-in{from{opacity:0;transform:translateY(18px) scale(.985);filter:blur(6px);}to{opacity:1;transform:none;filter:none;}}\n' +
-      '@keyframes tt-page-shift{from{opacity:.2;transform:translateX(18px);filter:blur(4px);}to{opacity:1;transform:none;filter:none;}}\n' +
+      '@keyframes tt-app-in{from{opacity:0;}to{opacity:1;}}\n' +
+      '@keyframes tt-page-shift{from{opacity:.2;}to{opacity:1;}}\n' +
       '@keyframes tt-fade-in{from{opacity:0;}to{opacity:1;}}\n' +
       '@keyframes tt-sheet-in{from{opacity:0;transform:translateY(34px) scale(.96);}to{opacity:1;transform:none;}}\n' +
       '.tt-ezber-overlay{animation:tt-fade-in .18s ease both;}\n' +
