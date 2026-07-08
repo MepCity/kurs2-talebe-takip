@@ -64,7 +64,7 @@ function doPost(e) {
         try { appendLogs_(changes); } catch (errLog) {}
       }
       var version = readOnly ? getVersion_() : bumpVersion_();
-      return json_({ ok: true, applied: results.length, results: results, version: version });
+      return json_({ ok: true, applied: results.length, results: results, version: version, reqToday: countRequest_() });
     } finally {
       if (lock) lock.releaseLock();
     }
@@ -479,6 +479,20 @@ function readMeta_() {
     }
   }
   return meta;
+}
+
+// Gunluk istek sayaci. Google kotasi Pasifik gunune gore sifirlanir,
+// o yuzden anahtar Pasifik tarihiyle tutulur. Yaklasik degerdir.
+function countRequest_() {
+  try {
+    var cache = CacheService.getScriptCache();
+    var key = 'req_' + Utilities.formatDate(new Date(), 'America/Los_Angeles', 'yyyyMMdd');
+    var n = Number(cache.get(key) || 0) + 1;
+    cache.put(key, String(n), 90000);
+    return n;
+  } catch (e) {
+    return 0;
+  }
 }
 
 function getVersion_() {
