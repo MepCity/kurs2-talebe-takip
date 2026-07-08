@@ -44,15 +44,9 @@ document.addEventListener('DOMContentLoaded', async function() {
     return btoa(bin);
   }
 
-  // Error sink persists across replaceWith since it's on window, not the DOM.
+  // Error sink — only log to console, don't show on screen.
   window.addEventListener('error', function(e) {
-    var p = document.body || document.documentElement;
-    var d = document.getElementById('__bundler_err') || p.appendChild(document.createElement('div'));
-    d.id = '__bundler_err';
-    d.style.cssText = 'position:fixed;bottom:12px;left:12px;right:12px;font:12px/1.4 ui-monospace,monospace;background:#2a1215;color:#ff8a80;padding:10px 14px;border-radius:8px;border:1px solid #5c2b2e;z-index:99999;white-space:pre-wrap;max-height:40vh;overflow:auto';
-    d.textContent = (d.textContent ? d.textContent + String.fromCharCode(10) : '') +
-      '[bundle] ' + (e.message || e.type) +
-      (e.filename ? ' (' + e.filename.slice(0, 60) + ':' + e.lineno + ')' : '');
+    console.error('[bundle]', e.message || e.type, e.filename ? '(' + e.filename.slice(0, 60) + ':' + e.lineno + ')' : '');
   }, true);
 
   try {
@@ -135,6 +129,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       'body{background:radial-gradient(circle at 20% 0%,rgba(10,102,255,.16),transparent 28%),linear-gradient(180deg,#f7fbff 0%,#ffffff 56%)!important;color:var(--tt-ink);}\n' +
       'body:before{content:"";position:fixed;inset:0;pointer-events:none;background:linear-gradient(180deg,rgba(255,255,255,.2),rgba(255,255,255,0));z-index:0;}\n' +
       'body>div:not([id^="__"]){animation:tt-app-in .52s cubic-bezier(.2,.8,.2,1) both;}\n' +
+      'x-dc,x-dc>*{transform:none!important;}\n' +
       'button,input{transition:transform .18s cubic-bezier(.2,.8,.2,1),box-shadow .18s ease,border-color .18s ease,background-color .18s ease,opacity .18s ease;}\n' +
       'button:active{transform:scale(.97);}button:hover{box-shadow:0 10px 26px rgba(15,23,42,.08);}\n' +
       'input:focus{box-shadow:0 0 0 4px rgba(10,102,255,.11),0 12px 30px rgba(15,23,42,.06)!important;border-color:rgba(10,102,255,.55)!important;}\n' +
