@@ -225,7 +225,18 @@ function readAttendance_(date) {
   var sheet = getSheet_(SHEETS.attendance);
   var headerRow = 2;
   var lastCol = sheet.getLastColumn();
-  if (lastCol < 4) return { ok: true, type: 'readAttendance', date: date, data: {} };
+  var lastRow = sheet.getLastRow();
+
+  var allStudents = [];
+  if (lastRow >= TABLE_FIRST_ROW) {
+    var nameVals = sheet.getRange(TABLE_FIRST_ROW, NAME_COL, lastRow - TABLE_FIRST_ROW + 1, 1).getValues();
+    for (var k = 0; k < nameVals.length; k++) {
+      var n = String(nameVals[k][0] || '').trim();
+      if (n) allStudents.push(n);
+    }
+  }
+
+  if (lastCol < 4) return { ok: true, type: 'readAttendance', date: date, data: {}, allStudents: allStudents };
 
   var headers = sheet.getRange(headerRow, 4, 1, lastCol - 3).getValues()[0];
   var col = -1;
@@ -233,22 +244,19 @@ function readAttendance_(date) {
   for (var i = 0; i < headers.length; i++) {
     if (normalizeHeader_(headers[i]) === clean) { col = 4 + i; break; }
   }
-  if (col < 0) return { ok: true, type: 'readAttendance', date: date, data: {} };
+  if (col < 0) return { ok: true, type: 'readAttendance', date: date, data: {}, allStudents: allStudents };
 
-  var lastRow = sheet.getLastRow();
-  if (lastRow < TABLE_FIRST_ROW) return { ok: true, type: 'readAttendance', date: date, data: {} };
+  if (lastRow < TABLE_FIRST_ROW) return { ok: true, type: 'readAttendance', date: date, data: {}, allStudents: allStudents };
 
   var rows = lastRow - TABLE_FIRST_ROW + 1;
-  var names = sheet.getRange(TABLE_FIRST_ROW, NAME_COL, rows, 1).getValues();
   var values = sheet.getRange(TABLE_FIRST_ROW, col, rows, 1).getValues();
 
   var data = {};
-  for (var i = 0; i < names.length; i++) {
-    var name = String(names[i][0] || '').trim();
+  for (var i = 0; i < allStudents.length; i++) {
     var val = String(values[i][0] || '').trim();
-    if (name && val) data[name] = val;
+    if (val) data[allStudents[i]] = val;
   }
-  return { ok: true, type: 'readAttendance', date: date, data: data };
+  return { ok: true, type: 'readAttendance', date: date, data: data, allStudents: allStudents };
 }
 
 function readStudent_(student) {
