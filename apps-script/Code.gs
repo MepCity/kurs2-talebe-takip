@@ -65,6 +65,8 @@ function applyChange_(change) {
       return clearStudentEverywhere_(change.student);
     case 'readAttendance':
       return readAttendance_(change.date);
+    case 'readAllAttendance':
+      return readAllAttendance_();
     case 'readStudent':
       return readStudent_(change.student);
     default:
@@ -257,6 +259,44 @@ function readAttendance_(date) {
     if (val) data[allStudents[i]] = val;
   }
   return { ok: true, type: 'readAttendance', date: date, data: data, allStudents: allStudents };
+}
+
+function readAllAttendance_() {
+  var sheet = getSheet_(SHEETS.attendance);
+  var headerRow = 2;
+  var lastCol = sheet.getLastColumn();
+  var lastRow = sheet.getLastRow();
+
+  var allStudents = [];
+  if (lastRow >= TABLE_FIRST_ROW) {
+    var nameVals = sheet.getRange(TABLE_FIRST_ROW, NAME_COL, lastRow - TABLE_FIRST_ROW + 1, 1).getValues();
+    for (var k = 0; k < nameVals.length; k++) {
+      var n = String(nameVals[k][0] || '').trim();
+      if (n) allStudents.push(n);
+    }
+  }
+
+  var dates = [];
+  var attendance = {};
+  if (lastCol >= 4 && allStudents.length > 0) {
+    var headers = sheet.getRange(headerRow, 4, 1, lastCol - 3).getValues()[0];
+    var rows = lastRow - TABLE_FIRST_ROW + 1;
+    var allVals = sheet.getRange(TABLE_FIRST_ROW, 4, rows, lastCol - 3).getValues();
+    for (var c = 0; c < headers.length; c++) {
+      var label = normalizeHeader_(headers[c]);
+      if (!label) continue;
+      dates.push(label);
+      for (var r = 0; r < allStudents.length; r++) {
+        var v = String(allVals[r][c] || '').trim();
+        if (v) {
+          if (!attendance[allStudents[r]]) attendance[allStudents[r]] = {};
+          attendance[allStudents[r]][label] = v;
+        }
+      }
+    }
+  }
+
+  return { ok: true, type: 'readAllAttendance', allStudents: allStudents, dates: dates, attendance: attendance };
 }
 
 function readStudent_(student) {
