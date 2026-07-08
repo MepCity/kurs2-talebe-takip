@@ -15,6 +15,7 @@ const SHEETS = {
   attendance: 'Yoklama',
   nurlu: ['Nurlu K.(1-5)', 'Nurlu K.(6-10)', 'Nurlu K.(11-15)', 'Nurlu K.(16-20)'],
   sure: 'Ezber Takip',
+  sure2: 'Ezber Takip 2',
   namaz: 'Namaz Takip',
   elifba: 'Elif-Ba Takip',
   kuran: 'Kuran Takip',
@@ -35,9 +36,38 @@ const LOG_READ_LIMIT = 200;
  * spreadsheetId bos olan sinif, script'in bagli oldugu tabloyu kullanir.
  */
 const SINIFLAR = {
-  'findikli': { ad: 'Fındıklı', spreadsheetId: '' }
+  'findikli': { ad: 'Fındıklı', spreadsheetId: '', duzen: 'eski' },
+  'mekke':    { ad: 'Mekke',    spreadsheetId: '1NFUNXgbxrnRZpGGg3IDTgKzu5keIi2HiYC_2YnUUIz4', duzen: 'yeni' },
+  'medine':   { ad: 'Medine',   spreadsheetId: '1dfdqUp2wzxKNCFdolgyeYXobh6H_uo9AkA_VNZm9Sdg', duzen: 'yeni' },
+  'kudus':    { ad: 'Kudüs',    spreadsheetId: '1ySOh6n4WiECBVjbwZs3J2TLgeKnUp5Lrnvayi6Betx8', duzen: 'yeni' },
+  'gazze':    { ad: 'Gazze',    spreadsheetId: '1Rm3eXKwgYaEDZEWwVOEXibr4Hjzhc3RlKLYNLkPPGw0', duzen: 'yeni' },
+  'endulus':  { ad: 'Endülüs',  spreadsheetId: '1JPXZHIctM-T2nqCTUG5CCd3VnxtevYWpy195i9DmPGc', duzen: 'yeni' },
+  'bagdat':   { ad: 'Bağdat',   spreadsheetId: '1FGjazMxV7Fdwdmlsvb1UDMzwcje4DUybcODHjl6AstY', duzen: 'yeni' }
 };
 const VARSAYILAN_SINIF = 'findikli';
+
+// Duzen farklari:
+//   eski (Fındıklı): nurlu kartta 4 madde (V/D/İ/K), Elif-Ba isim A kolonu satir 4,
+//     Namaz Takip'e vakit adlari yazilir, tarih basligi 4. satirda.
+//   yeni (diger 6):  nurlu kartta 3 madde (V/İ/K), Elif-Ba isim B kolonu satir 3,
+//     Namaz Takip'e vakit SAYISI yazilir, tarih basligi 2. satirda, Kuran Takip gunluk sayfa sayisi.
+function yeniDuzen_() {
+  return SINIFLAR[AKTIF_SINIF].duzen === 'yeni';
+}
+
+function nurluMadde_() {
+  return yeniDuzen_() ? 3 : 4;
+}
+
+function elifbaKonum_() {
+  return yeniDuzen_()
+    ? { nameCol: 2, firstRow: 3, noteCol: 3 }
+    : { nameCol: 1, firstRow: 4, noteCol: 2 };
+}
+
+function sheetOpt_(name) {
+  return aktifSS_().getSheetByName(name);
+}
 
 var AKTIF_SINIF = VARSAYILAN_SINIF;
 var AKTIF_SS = null;
@@ -149,12 +179,18 @@ function applyChange_(change) {
       return writeNurlu_(change.student, change.card, change.item, change.value);
     case 'sure':
       return writeByStudent_(SHEETS.sure, change.student, 3 + Number(change.index), change.value);
+    case 'sure2':
+      return sheetOpt_(SHEETS.sure2)
+        ? writeByStudent_(SHEETS.sure2, change.student, 3 + Number(change.index), change.value)
+        : { ok: false, error: 'Ezber Takip 2 sayfasi yok' };
     case 'elifba':
       return writeElifba_(change.student, change.value);
     case 'namaz':
       return writeByStudent_(SHEETS.namaz, change.student, 3, change.value);
     case 'namazDaily':
       return writeNamazDaily_(change.student, change.date, change.value);
+    case 'kuranDaily':
+      return writeKuranDaily_(change.student, change.date, change.value);
     case 'addStudent':
       return addStudentEverywhere_(change.student);
     case 'removeStudent':
@@ -193,29 +229,70 @@ function writeAttendance_(student, day, value, date) {
 function writeNurlu_(student, card, item, value) {
   const cardNo = Number(card);
   const itemNo = Number(item);
+  const madde = nurluMadde_();
   const sheetName = SHEETS.nurlu[Math.floor((cardNo - 1) / 5)];
   const cardOffset = (cardNo - 1) % 5;
-  const firstCol = 3 + cardOffset * 4;
-
-  // Hem site hem Excel sirasi: Vecize, Dua/Sure, Ilmihal, Kelime.
-  const uiToSheetOffset = [0, 1, 2, 3];
-  return writeByStudent_(sheetName, student, firstCol + uiToSheetOffset[itemNo], value);
+  const firstCol = 3 + cardOffset * madde;
+  if (itemNo < 0 || itemNo >= madde) return { ok: false, error: 'Gecersiz madde' };
+  return writeByStudent_(sheetName, student, firstCol + itemNo, value);
 }
 
 function writeElifba_(student, value) {
-  const sheet = getSheet_(SHEETS.elifba);
-  const row = findOrAppendStudent_(sheet, student, 1, 4);
-  sheet.getRange(row, 2).setValue(value || '');
-  return { ok: true, sheet: SHEETS.elifba, row, col: 2 };
+  const sheet = sheetOpt_(SHEETS.elifba);
+  if (!sheet) return { ok: false, error: 'Elif-Ba Takip sayfasi yok' };
+  const k = elifbaKonum_();
+  const row = findOrAppendStudent_(sheet, student, k.nameCol, k.firstRow);
+  sheet.getRange(row, k.noteCol).setValue(value || '');
+  return { ok: true, sheet: SHEETS.elifba, row: row, col: k.noteCol };
+}
+
+// Tarih basliklarinin hangi satirda oldugunu bul (eski duzen 4, yeni duzen 2).
+function dateHeaderRow_(sheet) {
+  for (var r = 2; r <= 4; r++) {
+    var lastCol = Math.min(sheet.getLastColumn(), 12);
+    if (lastCol < 3) continue;
+    var vals = sheet.getRange(r, 3, 1, lastCol - 2).getValues()[0];
+    for (var i = 0; i < vals.length; i++) {
+      var lbl = normalizeHeader_(vals[i]);
+      if (lbl && isDateLabel_(lbl)) return r;
+    }
+  }
+  return TABLE_FIRST_ROW - 1;
+}
+
+function findHeaderCol_(sheet, label, firstCol, headerRow) {
+  var clean = String(label || '').trim();
+  if (!clean) return -1;
+  var lastCol = sheet.getLastColumn();
+  if (lastCol < firstCol) return -1;
+  var vals = sheet.getRange(headerRow, firstCol, 1, lastCol - firstCol + 1).getValues()[0];
+  for (var i = 0; i < vals.length; i++) {
+    if (normalizeHeader_(vals[i]) === clean) return firstCol + i;
+  }
+  return -1;
 }
 
 function writeNamazDaily_(student, date, value) {
   const sheet = getSheet_(SHEETS.namaz);
   const row = findOrAppendStudent_(sheet, student, NAME_COL, TABLE_FIRST_ROW);
-  const col = findOrAppendHeader_(sheet, date || '', 3, TABLE_FIRST_ROW - 1);
-  const text = Array.isArray(value) ? value.join(', ') : (value || '');
-  sheet.getRange(row, col).setValue(text);
+  const col = findOrAppendHeader_(sheet, date || '', 3, dateHeaderRow_(sheet));
+  var out;
+  if (yeniDuzen_()) {
+    out = Array.isArray(value) ? value.length : (Number(value) || 0);
+  } else {
+    out = Array.isArray(value) ? value.join(', ') : (value || '');
+  }
+  sheet.getRange(row, col).setValue(out);
   return { ok: true, sheet: SHEETS.namaz, row, col, date };
+}
+
+function writeKuranDaily_(student, date, value) {
+  const sheet = sheetOpt_(SHEETS.kuran);
+  if (!sheet) return { ok: false, error: 'Kuran Takip sayfasi yok' };
+  const row = findOrAppendStudent_(sheet, student, NAME_COL, TABLE_FIRST_ROW);
+  const col = findOrAppendHeader_(sheet, date || '', 3, dateHeaderRow_(sheet));
+  sheet.getRange(row, col).setValue(Number(value) || 0);
+  return { ok: true, sheet: SHEETS.kuran, row, col, date };
 }
 
 function writeByStudent_(sheetName, student, col, value) {
@@ -227,20 +304,29 @@ function writeByStudent_(sheetName, student, col, value) {
 
 function addStudentEverywhere_(student) {
   if (!student) return { ok: false, error: 'Ogrenci adi bos' };
-  [SHEETS.attendance, SHEETS.sure, SHEETS.namaz, SHEETS.kuran].concat(SHEETS.nurlu).forEach(function(sheetName) {
-    const sheet = getSheet_(sheetName);
-    findOrAppendStudent_(sheet, student, NAME_COL, TABLE_FIRST_ROW);
+  [SHEETS.attendance, SHEETS.sure, SHEETS.sure2, SHEETS.namaz, SHEETS.kuran].concat(SHEETS.nurlu).forEach(function(sheetName) {
+    const sheet = sheetOpt_(sheetName);
+    if (sheet) findOrAppendStudent_(sheet, student, NAME_COL, TABLE_FIRST_ROW);
   });
-  findOrAppendStudent_(getSheet_(SHEETS.elifba), student, 1, 4);
+  const elifbaSheet = sheetOpt_(SHEETS.elifba);
+  if (elifbaSheet) {
+    const k = elifbaKonum_();
+    findOrAppendStudent_(elifbaSheet, student, k.nameCol, k.firstRow);
+  }
   return { ok: true, type: 'addStudent', student };
 }
 
 function clearStudentEverywhere_(student) {
   if (!student) return { ok: false, error: 'Ogrenci adi bos' };
-  [SHEETS.attendance, SHEETS.sure, SHEETS.namaz, SHEETS.kuran].concat(SHEETS.nurlu).forEach(function(sheetName) {
-    clearStudentRow_(getSheet_(sheetName), student, NAME_COL, TABLE_FIRST_ROW);
+  [SHEETS.attendance, SHEETS.sure, SHEETS.sure2, SHEETS.namaz, SHEETS.kuran].concat(SHEETS.nurlu).forEach(function(sheetName) {
+    const sheet = sheetOpt_(sheetName);
+    if (sheet) clearStudentRow_(sheet, student, NAME_COL, TABLE_FIRST_ROW);
   });
-  clearStudentRow_(getSheet_(SHEETS.elifba), student, 1, 4);
+  const elifbaSheet = sheetOpt_(SHEETS.elifba);
+  if (elifbaSheet) {
+    const k = elifbaKonum_();
+    clearStudentRow_(elifbaSheet, student, k.nameCol, k.firstRow);
+  }
   return { ok: true, type: 'removeStudent', student };
 }
 
@@ -400,6 +486,29 @@ function readAttendance_(date) {
     if (val) data[allStudents[i]] = val;
   }
   return { ok: true, type: 'readAttendance', date: date, data: data, allStudents: allStudents };
+}
+
+// Bugunun '9 Tem' etiketi — hafta sonu/sezon kontrolu YOK (namaz/kuran icin).
+function bugunEtiketi_() {
+  var parts = Utilities.formatDate(new Date(), TZ, 'd:M').split(':');
+  return Number(parts[0]) + ' ' + AYLAR[Number(parts[1]) - 1];
+}
+
+// Ezber sayfasinin 2. satirindaki sure/dua adlarini okur (ozet kolonlarina gelince durur).
+function headerList_(sheetName) {
+  var sheet = sheetOpt_(sheetName);
+  if (!sheet) return [];
+  var lastCol = sheet.getLastColumn();
+  if (lastCol < 3) return [];
+  var vals = sheet.getRange(2, 3, 1, lastCol - 2).getValues()[0];
+  var out = [];
+  for (var i = 0; i < vals.length; i++) {
+    var s = String(vals[i] || '').trim();
+    if (!s) break;
+    if (/A–Z|A-Z|Toplam|En Çok|🔤|➕|📖|📊/.test(s)) break;
+    out.push(s);
+  }
+  return out;
 }
 
 function todayLabel_() {
@@ -630,7 +739,15 @@ function readAllAttendance_() {
   }
 
   var meta = readMeta_();
-  var result = { ok: true, type: 'readAllAttendance', allStudents: allStudents, dates: dates, attendance: attendance, version: version, hocalar: meta.hocalar, log: meta.log };
+  var result = { ok: true, type: 'readAllAttendance', allStudents: allStudents, dates: dates, attendance: attendance, version: version, hocalar: meta.hocalar, log: meta.log,
+    sureList: headerList_(SHEETS.sure),
+    sureList2: headerList_(SHEETS.sure2),
+    ozellikler: {
+      elifba: !!sheetOpt_(SHEETS.elifba),
+      kuran: !!sheetOpt_(SHEETS.kuran),
+      sure2: !!sheetOpt_(SHEETS.sure2),
+      nurluMadde: nurluMadde_()
+    } };
   try { cache.put(cacheKey, JSON.stringify(result), 120); } catch (e) {}
   return result;
 }
@@ -643,11 +760,13 @@ function readStudent_(student) {
   if (hit) {
     try { return JSON.parse(hit); } catch (e) {}
   }
-  var result = { ok: true, type: 'readStudent', student: student, nurlu: {}, sure: {}, elifba: '', namaz: 0 };
+  var result = { ok: true, type: 'readStudent', student: student, nurlu: {}, sure: {}, sure2: {}, elifba: '', namaz: 0, kuranToday: 0 };
+  var madde = nurluMadde_();
 
-  // Nurlu cards (4 sheets, 5 cards each, 4 items per card)
+  // Nurlu kartlar (4 sayfa, 5'er kart, kart basina madde sayisi duzene gore 3 veya 4)
   for (var si = 0; si < SHEETS.nurlu.length; si++) {
-    var sheet = getSheet_(SHEETS.nurlu[si]);
+    var sheet = sheetOpt_(SHEETS.nurlu[si]);
+    if (!sheet) continue;
     var row = findStudentRow_(sheet, student, NAME_COL, TABLE_FIRST_ROW);
     if (!row) continue;
     var lastCol = sheet.getLastColumn();
@@ -655,40 +774,58 @@ function readStudent_(student) {
     var vals = sheet.getRange(row, 3, 1, lastCol - 2).getValues()[0];
     for (var ci = 0; ci < 5; ci++) {
       var cardNo = si * 5 + ci + 1;
-      for (var ii = 0; ii < 4; ii++) {
-        var colIdx = ci * 4 + ii;
+      for (var ii = 0; ii < madde; ii++) {
+        var colIdx = ci * madde + ii;
         var v = String(vals[colIdx] || '').trim();
         if (v) result.nurlu['c' + cardNo + '_' + ii] = v;
       }
     }
   }
 
-  // Sure (Ezber Takip)
-  var sureSheet = getSheet_(SHEETS.sure);
-  var sureRow = findStudentRow_(sureSheet, student, NAME_COL, TABLE_FIRST_ROW);
-  if (sureRow) {
+  // Ezber Takip (+ varsa Ezber Takip 2)
+  var sureDefs = [[SHEETS.sure, 'sure'], [SHEETS.sure2, 'sure2']];
+  for (var sd = 0; sd < sureDefs.length; sd++) {
+    var sureSheet = sheetOpt_(sureDefs[sd][0]);
+    if (!sureSheet) continue;
+    var sureRow = findStudentRow_(sureSheet, student, NAME_COL, TABLE_FIRST_ROW);
+    if (!sureRow) continue;
     var sureLast = sureSheet.getLastColumn();
-    if (sureLast >= 3) {
-      var sureVals = sureSheet.getRange(sureRow, 3, 1, sureLast - 2).getValues()[0];
-      for (var i = 0; i < sureVals.length; i++) {
-        var sv = String(sureVals[i] || '').trim();
-        if (sv) result.sure[i] = sv;
-      }
+    if (sureLast < 3) continue;
+    var sureVals = sureSheet.getRange(sureRow, 3, 1, sureLast - 2).getValues()[0];
+    for (var i = 0; i < sureVals.length; i++) {
+      var sv = String(sureVals[i] || '').trim();
+      if (sv) result[sureDefs[sd][1]][i] = sv;
     }
   }
 
-  // Elif-Ba
-  var elifbaSheet = getSheet_(SHEETS.elifba);
-  var elifbaRow = findStudentRow_(elifbaSheet, student, 1, 4);
-  if (elifbaRow) {
-    result.elifba = String(elifbaSheet.getRange(elifbaRow, 2).getValue() || '').trim();
+  // Elif-Ba (varsa)
+  var elifbaSheet = sheetOpt_(SHEETS.elifba);
+  if (elifbaSheet) {
+    var k = elifbaKonum_();
+    var elifbaRow = findStudentRow_(elifbaSheet, student, k.nameCol, k.firstRow);
+    if (elifbaRow) {
+      result.elifba = String(elifbaSheet.getRange(elifbaRow, k.noteCol).getValue() || '').trim();
+    }
   }
 
   // Namaz
-  var namazSheet = getSheet_(SHEETS.namaz);
-  var namazRow = findStudentRow_(namazSheet, student, NAME_COL, TABLE_FIRST_ROW);
-  if (namazRow) {
-    result.namaz = Number(namazSheet.getRange(namazRow, 3).getValue()) || 0;
+  var namazSheet = sheetOpt_(SHEETS.namaz);
+  if (namazSheet) {
+    var namazRow = findStudentRow_(namazSheet, student, NAME_COL, TABLE_FIRST_ROW);
+    if (namazRow && !yeniDuzen_()) {
+      result.namaz = Number(namazSheet.getRange(namazRow, 3).getValue()) || 0;
+    }
+  }
+
+  // Kuran: bugunun sayfa sayisi (varsa)
+  var kuranSheet = sheetOpt_(SHEETS.kuran);
+  if (kuranSheet) {
+    var kuranRow = findStudentRow_(kuranSheet, student, NAME_COL, TABLE_FIRST_ROW);
+    if (kuranRow) {
+      var bugun = bugunEtiketi_();
+      var kuranCol = findHeaderCol_(kuranSheet, bugun, 3, dateHeaderRow_(kuranSheet));
+      if (kuranCol > 0) result.kuranToday = Number(kuranSheet.getRange(kuranRow, kuranCol).getValue()) || 0;
+    }
   }
 
   try { cache.put(cacheKey, JSON.stringify(result), 120); } catch (e) {}
