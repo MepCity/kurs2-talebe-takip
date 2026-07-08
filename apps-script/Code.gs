@@ -28,6 +28,7 @@ const TABLE_FIRST_ROW = 5;
 const NAME_COL = 2;
 const AYLAR = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
 const TZ = 'Europe/Istanbul';
+const SON_DERS_GUNU = '20260724'; // kurs bitişi: bu tarihten sonra yeni yoklama kolonu açılmaz
 
 function doGet() {
   return json_({ ok: true, message: 'Talebe Takip baglantisi hazir.' });
@@ -336,6 +337,7 @@ function readAttendance_(date) {
 }
 
 function todayLabel_() {
+  if (Utilities.formatDate(new Date(), TZ, 'yyyyMMdd') > SON_DERS_GUNU) return null; // kurs bitti
   var parts = Utilities.formatDate(new Date(), TZ, 'd:M:u').split(':');
   var isoDay = Number(parts[2]);
   if (isoDay >= 6) return null; // cumartesi/pazar: ders yok
