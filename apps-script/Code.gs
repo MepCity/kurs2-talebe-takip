@@ -24,6 +24,43 @@ const SHEETS = {
 
 const LOG_READ_LIMIT = 200;
 
+/*
+ * COKLU SINIF: her sinifin kendi E-Tablosu olur, hepsi bu tek script'e baglanir.
+ * Yeni sinif eklemek icin:
+ *   1. E-Tabloyu kopyala, linkindeki /d/ ile /edit arasindaki ID'yi al.
+ *   2. Asagiya ekle: 'sinif2': { ad: '2. Sinif', spreadsheetId: '1AbC...' },
+ *   3. Kaydet + yeni surum deploy et.
+ *   4. Editorde tetikleyicileriKur() fonksiyonunu bir kez calistir
+ *      (elle yapilan Excel duzenlemelerinin aninda yansimasi icin).
+ * spreadsheetId bos olan sinif, script'in bagli oldugu tabloyu kullanir.
+ */
+const SINIFLAR = {
+  'findikli': { ad: 'Fındıklı', spreadsheetId: '' }
+};
+const VARSAYILAN_SINIF = 'findikli';
+
+var AKTIF_SINIF = VARSAYILAN_SINIF;
+var AKTIF_SS = null;
+
+function sinifSec_(key) {
+  AKTIF_SINIF = (key && SINIFLAR[key]) ? key : VARSAYILAN_SINIF;
+  var conf = SINIFLAR[AKTIF_SINIF];
+  AKTIF_SS = conf.spreadsheetId ? SpreadsheetApp.openById(conf.spreadsheetId) : SpreadsheetApp.getActive();
+}
+
+function aktifSS_() {
+  if (!AKTIF_SS) sinifSec_(AKTIF_SINIF);
+  return AKTIF_SS;
+}
+
+function sinifBySpreadsheetId_(id) {
+  for (var key in SINIFLAR) {
+    var conf = SINIFLAR[key];
+    if (conf.spreadsheetId === id) return key;
+  }
+  return VARSAYILAN_SINIF;
+}
+
 const TABLE_FIRST_ROW = 5;
 const NAME_COL = 2;
 const AYLAR = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
@@ -34,11 +71,39 @@ function doGet() {
   return json_({ ok: true, message: 'Talebe Takip baglantisi hazir.' });
 }
 
-// E-Tabloda elle yapilan her duzenlemede calisir (basit tetikleyici).
+// E-Tabloda elle yapilan her duzenlemede calisir.
 // Versiyon sayacini artirir ki acik telefonlar birkac saniye icinde
 // degisikligi cekip onbelleklerini tazelesin.
+// onEdit: script'in bagli oldugu tablo icin (basit tetikleyici).
+// onEditYuklu: diger siniflarin tablolari icin (tetikleyicileriKur ile kurulur).
 function onEdit(e) {
-  try { bumpVersion_(); } catch (err) {}
+  try { editBump_(e); } catch (err) {}
+}
+
+function onEditYuklu(e) {
+  try { editBump_(e); } catch (err) {}
+}
+
+function editBump_(e) {
+  var id = (e && e.source && e.source.getId) ? e.source.getId() : '';
+  bumpVersionFor_(sinifBySpreadsheetId_(id));
+}
+
+// Yeni sinif ekledikten sonra editorden BIR KEZ calistir:
+// her sinifin tablosuna elle-duzenleme tetikleyicisi kurar (varsa yeniden kurmaz).
+function tetikleyicileriKur() {
+  var mevcut = {};
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'onEditYuklu') mevcut[t.getTriggerSourceId()] = true;
+  });
+  var kurulan = [];
+  for (var key in SINIFLAR) {
+    var id = SINIFLAR[key].spreadsheetId;
+    if (!id || mevcut[id]) continue;
+    ScriptApp.newTrigger('onEditYuklu').forSpreadsheet(id).onEdit().create();
+    kurulan.push(key);
+  }
+  Logger.log('Tetikleyici kurulan siniflar: ' + (kurulan.join(', ') || 'yok (hepsi zaten kurulu)'));
 }
 
 function doPost(e) {
@@ -46,6 +111,7 @@ function doPost(e) {
     const payload = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     const changes = Array.isArray(payload.changes) ? payload.changes : [];
 
+    sinifSec_(payload.sinif);
     try { ensureTodayColumn_(); } catch (err) {}
 
     var readOnly = changes.every(function(c) {
@@ -224,10 +290,10 @@ function findOrAppendHeader_(sheet, label, firstCol, headerRow) {
   return col;
 }
 
-var ROSTER_MEMO = null;
+var ROSTER_MEMO = {};
 
 function rosterNorms_() {
-  if (ROSTER_MEMO) return ROSTER_MEMO;
+  if (ROSTER_MEMO[AKTIF_SINIF]) return ROSTER_MEMO[AKTIF_SINIF];
   var memo = {};
   try {
     var sheet = getSheet_(SHEETS.attendance);
@@ -240,7 +306,7 @@ function rosterNorms_() {
       }
     }
   } catch (e) {}
-  ROSTER_MEMO = memo;
+  ROSTER_MEMO[AKTIF_SINIF] = memo;
   return memo;
 }
 
@@ -348,7 +414,7 @@ function ensureTodayColumn_() {
   var label = todayLabel_();
   if (!label) return;
   var cache = CacheService.getScriptCache();
-  var key = 'day_' + label;
+  var key = 'day_' + AKTIF_SINIF + '_' + label;
   if (cache.get(key)) return;
   var lock = LockService.getDocumentLock();
   lock.waitLock(30000);
@@ -367,7 +433,7 @@ function isDateLabel_(s) {
 }
 
 function getOrCreateSheet_(name, headers) {
-  var ss = SpreadsheetApp.getActive();
+  var ss = aktifSS_();
   var sheet = ss.getSheetByName(name);
   if (!sheet) {
     try {
@@ -456,7 +522,7 @@ function logBulk_(entries) {
 
 function readMeta_() {
   var meta = { hocalar: [], log: [] };
-  var ss = SpreadsheetApp.getActive();
+  var ss = aktifSS_();
 
   var hs = ss.getSheetByName(SHEETS.hocalar);
   if (hs && hs.getLastRow() >= 2) {
@@ -496,24 +562,34 @@ function countRequest_() {
 }
 
 function getVersion_() {
-  var cached = CacheService.getScriptCache().get('v');
-  if (cached != null) return Number(cached);
-  var v = PropertiesService.getScriptProperties().getProperty('v') || '0';
-  CacheService.getScriptCache().put('v', v, 21600);
-  return Number(v);
+  return getVersionFor_(AKTIF_SINIF);
 }
 
 function bumpVersion_() {
-  var v = getVersion_() + 1;
-  PropertiesService.getScriptProperties().setProperty('v', String(v));
-  CacheService.getScriptCache().put('v', String(v), 21600);
+  return bumpVersionFor_(AKTIF_SINIF);
+}
+
+function getVersionFor_(sinif) {
+  var key = 'v_' + sinif;
+  var cached = CacheService.getScriptCache().get(key);
+  if (cached != null) return Number(cached);
+  var v = PropertiesService.getScriptProperties().getProperty(key) || '0';
+  CacheService.getScriptCache().put(key, v, 21600);
+  return Number(v);
+}
+
+function bumpVersionFor_(sinif) {
+  var key = 'v_' + sinif;
+  var v = getVersionFor_(sinif) + 1;
+  PropertiesService.getScriptProperties().setProperty(key, String(v));
+  CacheService.getScriptCache().put(key, String(v), 21600);
   return v;
 }
 
 function readAllAttendance_() {
   var version = getVersion_();
   var cache = CacheService.getScriptCache();
-  var cacheKey = 'att_' + version;
+  var cacheKey = 'att_' + AKTIF_SINIF + '_' + version;
   var hit = cache.get(cacheKey);
   if (hit) {
     try { return JSON.parse(hit); } catch (e) {}
@@ -562,7 +638,7 @@ function readAllAttendance_() {
 function readStudent_(student) {
   if (!student) return { ok: false, error: 'Ogrenci adi bos' };
   var cache = CacheService.getScriptCache();
-  var cacheKey = 'stu_' + getVersion_() + '_' + Utilities.base64Encode(student, Utilities.Charset.UTF_8);
+  var cacheKey = 'stu_' + AKTIF_SINIF + '_' + getVersion_() + '_' + Utilities.base64Encode(student, Utilities.Charset.UTF_8);
   var hit = cache.get(cacheKey);
   if (hit) {
     try { return JSON.parse(hit); } catch (e) {}
@@ -620,7 +696,7 @@ function readStudent_(student) {
 }
 
 function getSheet_(name) {
-  const sheet = SpreadsheetApp.getActive().getSheetByName(name);
+  const sheet = aktifSS_().getSheetByName(name);
   if (!sheet) throw new Error('Sayfa bulunamadi: ' + name);
   return sheet;
 }
