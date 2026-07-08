@@ -93,6 +93,10 @@ function applyChange_(change) {
       return readStudent_(change.student);
     case 'addHoca':
       return addHoca_(change.name);
+    case 'renameHoca':
+      return renameHoca_(change.oldName, change.newName);
+    case 'removeHoca':
+      return removeHoca_(change.name);
     case 'logBulk':
       return logBulk_(change.entries);
     case 'readVersion':
@@ -381,6 +385,39 @@ function addHoca_(name) {
   }
   sheet.getRange(lastRow + 1, 1).setValue(clean);
   return { ok: true, type: 'addHoca', name: clean };
+}
+
+function findHocaRow_(sheet, name) {
+  var needle = normalizeName_(name);
+  if (!needle) return null;
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return null;
+  var vals = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  for (var i = 0; i < vals.length; i++) {
+    if (normalizeName_(vals[i][0]) === needle) return 2 + i;
+  }
+  return null;
+}
+
+function renameHoca_(oldName, newName) {
+  var nv = String(newName || '').trim();
+  if (!nv) return { ok: false, error: 'Yeni isim bos' };
+  var sheet = getOrCreateSheet_(SHEETS.hocalar, ['Hoca']);
+  if (findHocaRow_(sheet, nv)) return { ok: true, type: 'renameHoca', name: nv, existed: true };
+  var row = findHocaRow_(sheet, oldName);
+  if (row) {
+    sheet.getRange(row, 1).setValue(nv);
+  } else {
+    sheet.getRange(sheet.getLastRow() + 1, 1).setValue(nv);
+  }
+  return { ok: true, type: 'renameHoca', name: nv };
+}
+
+function removeHoca_(name) {
+  var sheet = getOrCreateSheet_(SHEETS.hocalar, ['Hoca']);
+  var row = findHocaRow_(sheet, name);
+  if (row) sheet.deleteRow(row);
+  return { ok: true, type: 'removeHoca', name: String(name || ''), found: !!row };
 }
 
 function appendLogs_(changes) {
