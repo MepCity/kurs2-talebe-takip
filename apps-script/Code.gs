@@ -73,7 +73,7 @@ function applyChange_(change) {
 function writeAttendance_(student, day, value, date) {
   var sheet = getSheet_(SHEETS.attendance);
   var col = date
-    ? findOrAppendHeader_(sheet, date, 4, TABLE_FIRST_ROW - 1)
+    ? findOrAppendHeader_(sheet, date, 4, 2)
     : 4 + Number(day);
   var row = findOrAppendStudent_(sheet, student, NAME_COL, TABLE_FIRST_ROW);
   sheet.getRange(row, col).setValue(value || '');
@@ -221,7 +221,7 @@ function dateToLabel_(d) {
 
 function readAttendance_(date) {
   var sheet = getSheet_(SHEETS.attendance);
-  var headerRow = TABLE_FIRST_ROW - 1;
+  var headerRow = 2;
   var lastCol = sheet.getLastColumn();
   if (lastCol < 4) return { ok: true, type: 'readAttendance', date: date, data: {} };
 
