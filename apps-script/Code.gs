@@ -48,7 +48,7 @@ function applyChange_(change) {
 
   switch (change.type) {
     case 'att':
-      return writeAttendance_(change.student, change.day, change.value);
+      return writeAttendance_(change.student, change.day, change.value, change.date);
     case 'nurlu':
       return writeNurlu_(change.student, change.card, change.item, change.value);
     case 'sure':
@@ -68,9 +68,14 @@ function applyChange_(change) {
   }
 }
 
-function writeAttendance_(student, day, value) {
-  // Yoklama sayfasinda gunler D sutunundan basliyor: day=0 -> D.
-  return writeByStudent_(SHEETS.attendance, student, 4 + Number(day), value);
+function writeAttendance_(student, day, value, date) {
+  var sheet = getSheet_(SHEETS.attendance);
+  var col = date
+    ? findOrAppendHeader_(sheet, date, 4, TABLE_FIRST_ROW - 1)
+    : 4 + Number(day);
+  var row = findOrAppendStudent_(sheet, student, NAME_COL, TABLE_FIRST_ROW);
+  sheet.getRange(row, col).setValue(value || '');
+  return { ok: true, sheet: SHEETS.attendance, row: row, col: col };
 }
 
 function writeNurlu_(student, card, item, value) {
