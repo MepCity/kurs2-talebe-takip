@@ -17,8 +17,12 @@ const SHEETS = {
   sure: 'Ezber Takip',
   namaz: 'Namaz Takip',
   elifba: 'Elif-Ba Takip',
-  kuran: 'Kuran Takip'
+  kuran: 'Kuran Takip',
+  hocalar: 'Hocalar',
+  gecmis: 'İşlem Geçmişi'
 };
+
+const LOG_READ_LIMIT = 200;
 
 const TABLE_FIRST_ROW = 5;
 const NAME_COL = 2;
@@ -48,6 +52,9 @@ function doPost(e) {
 
     try {
       const results = changes.map(applyChange_);
+      if (!readOnly) {
+        try { appendLogs_(changes); } catch (errLog) {}
+      }
       var version = readOnly ? getVersion_() : bumpVersion_();
       return json_({ ok: true, applied: results.length, results: results, version: version });
     } finally {
@@ -84,6 +91,10 @@ function applyChange_(change) {
       return readAllAttendance_();
     case 'readStudent':
       return readStudent_(change.student);
+    case 'addHoca':
+      return addHoca_(change.name);
+    case 'logBulk':
+      return logBulk_(change.entries);
     case 'readVersion':
       return { ok: true, type: 'readVersion', version: getVersion_() };
     default:
@@ -306,6 +317,88 @@ function isDateLabel_(s) {
   return !!(m && Number(m[1]) >= 1 && Number(m[1]) <= 31 && AYLAR.indexOf(m[2]) >= 0);
 }
 
+function getOrCreateSheet_(name, headers) {
+  var ss = SpreadsheetApp.getActive();
+  var sheet = ss.getSheetByName(name);
+  if (!sheet) {
+    try {
+      sheet = ss.insertSheet(name);
+      if (headers && headers.length) sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    } catch (e) {
+      sheet = ss.getSheetByName(name);
+      if (!sheet) throw e;
+    }
+  }
+  return sheet;
+}
+
+function addHoca_(name) {
+  var clean = String(name || '').trim();
+  if (!clean) return { ok: false, error: 'Hoca adi bos' };
+  var sheet = getOrCreateSheet_(SHEETS.hocalar, ['Hoca']);
+  var lastRow = sheet.getLastRow();
+  if (lastRow >= 2) {
+    var vals = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+    for (var i = 0; i < vals.length; i++) {
+      if (normalizeName_(vals[i][0]) === normalizeName_(clean)) return { ok: true, type: 'addHoca', name: clean, existed: true };
+    }
+  }
+  sheet.getRange(lastRow + 1, 1).setValue(clean);
+  return { ok: true, type: 'addHoca', name: clean };
+}
+
+function appendLogs_(changes) {
+  var rows = [];
+  for (var i = 0; i < changes.length; i++) {
+    var c = changes[i];
+    if (!c || !c.text || c.type === 'logBulk') continue;
+    var ts = Number(c.ts) || Date.now();
+    rows.push([new Date(ts), String(c.hoca || ''), String(c.text)]);
+  }
+  if (!rows.length) return;
+  var sheet = getOrCreateSheet_(SHEETS.gecmis, ['Tarih', 'Hoca', 'İşlem']);
+  sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, 3).setValues(rows);
+}
+
+function logBulk_(entries) {
+  if (!Array.isArray(entries) || !entries.length) return { ok: false, error: 'Bos liste' };
+  var rows = entries.slice(-400).map(function(e) {
+    var ts = Number(e && e[0]) || Date.now();
+    return [new Date(ts), String((e && e[1]) || ''), String((e && e[2]) || '')];
+  }).filter(function(r) { return r[2]; });
+  if (!rows.length) return { ok: false, error: 'Bos liste' };
+  var sheet = getOrCreateSheet_(SHEETS.gecmis, ['Tarih', 'Hoca', 'İşlem']);
+  sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, 3).setValues(rows);
+  return { ok: true, type: 'logBulk', added: rows.length };
+}
+
+function readMeta_() {
+  var meta = { hocalar: [], log: [] };
+  var ss = SpreadsheetApp.getActive();
+
+  var hs = ss.getSheetByName(SHEETS.hocalar);
+  if (hs && hs.getLastRow() >= 2) {
+    var hv = hs.getRange(2, 1, hs.getLastRow() - 1, 1).getValues();
+    for (var i = 0; i < hv.length; i++) {
+      var n = String(hv[i][0] || '').trim();
+      if (n) meta.hocalar.push(n);
+    }
+  }
+
+  var ls = ss.getSheetByName(SHEETS.gecmis);
+  if (ls && ls.getLastRow() >= 2) {
+    var total = ls.getLastRow() - 1;
+    var count = Math.min(total, LOG_READ_LIMIT);
+    var lv = ls.getRange(ls.getLastRow() - count + 1, 1, count, 3).getValues();
+    for (var j = 0; j < lv.length; j++) {
+      var ts = lv[j][0] instanceof Date ? lv[j][0].getTime() : Number(lv[j][0]) || 0;
+      var text = String(lv[j][2] || '').trim();
+      if (text) meta.log.push([ts, String(lv[j][1] || ''), text]);
+    }
+  }
+  return meta;
+}
+
 function getVersion_() {
   var cached = CacheService.getScriptCache().get('v');
   if (cached != null) return Number(cached);
@@ -364,7 +457,8 @@ function readAllAttendance_() {
     }
   }
 
-  var result = { ok: true, type: 'readAllAttendance', allStudents: allStudents, dates: dates, attendance: attendance, version: version };
+  var meta = readMeta_();
+  var result = { ok: true, type: 'readAllAttendance', allStudents: allStudents, dates: dates, attendance: attendance, version: version, hocalar: meta.hocalar, log: meta.log };
   try { cache.put(cacheKey, JSON.stringify(result), 120); } catch (e) {}
   return result;
 }
