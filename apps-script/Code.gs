@@ -230,11 +230,58 @@ function writeNurlu_(student, card, item, value) {
   const cardNo = Number(card);
   const itemNo = Number(item);
   const madde = nurluMadde_();
-  const sheetName = SHEETS.nurlu[Math.floor((cardNo - 1) / 5)];
   const cardOffset = (cardNo - 1) % 5;
   const firstCol = 3 + cardOffset * madde;
   if (itemNo < 0 || itemNo >= madde) return { ok: false, error: 'Gecersiz madde' };
-  return writeByStudent_(sheetName, student, firstCol + itemNo, value);
+  const sheet = getNurluSheet_(Math.floor((cardNo - 1) / 5));
+  const row = findOrAppendStudent_(sheet, student, NAME_COL, TABLE_FIRST_ROW);
+  sheet.getRange(row, firstCol + itemNo).setValue(value || '');
+  return { ok: true, sheet: sheet.getName(), row: row, col: firstCol + itemNo };
+}
+
+// Nurlu sayfasini getirir; yoksa dogru baslik duzeniyle olusturur ve
+// Yoklama'daki ogrencileri sirasiyla ekler.
+function getNurluSheet_(idx) {
+  var name = SHEETS.nurlu[idx];
+  var sheet = sheetOpt_(name);
+  if (sheet) return sheet;
+
+  var ss = aktifSS_();
+  try {
+    sheet = ss.insertSheet(name);
+  } catch (e) {
+    sheet = ss.getSheetByName(name);
+    if (!sheet) throw e;
+    return sheet;
+  }
+
+  var madde = nurluMadde_();
+  var itemNames = madde === 3 ? ['Vecize', 'İlmihal', 'Kelime'] : ['Vecize', 'Dua', 'İlmihal', 'Kelime'];
+  var firstCard = idx * 5 + 1;
+  sheet.getRange(1, 1).setValue('🌙 NURLU KARTLAR EZBER TAKİP LİSTESİ (Kart ' + firstCard + '–' + (firstCard + 4) + ') 🌙');
+  sheet.getRange(2, 1).setValue('Sıra No');
+  sheet.getRange(2, 2).setValue('Ad Soyad');
+  for (var ci = 0; ci < 5; ci++) {
+    sheet.getRange(2, 3 + ci * madde).setValue((firstCard + ci) + '. Kart');
+    for (var ii = 0; ii < madde; ii++) {
+      sheet.getRange(3, 3 + ci * madde + ii).setValue(itemNames[ii]);
+    }
+  }
+
+  try {
+    var att = sheetOpt_(SHEETS.attendance);
+    if (att && att.getLastRow() >= TABLE_FIRST_ROW) {
+      var vals = att.getRange(TABLE_FIRST_ROW, NAME_COL, att.getLastRow() - TABLE_FIRST_ROW + 1, 1).getValues();
+      var rows = [];
+      for (var i = 0; i < vals.length; i++) {
+        var n = String(vals[i][0] || '').trim();
+        if (n) rows.push([rows.length + 1, n]);
+      }
+      if (rows.length) sheet.getRange(TABLE_FIRST_ROW, 1, rows.length, 2).setValues(rows);
+    }
+  } catch (e) {}
+
+  return sheet;
 }
 
 function writeElifba_(student, value) {
