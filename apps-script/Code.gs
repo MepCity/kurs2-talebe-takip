@@ -212,6 +212,26 @@ function findOrAppendHeader_(sheet, label, firstCol, headerRow) {
   return col;
 }
 
+var ROSTER_MEMO = null;
+
+function rosterNorms_() {
+  if (ROSTER_MEMO) return ROSTER_MEMO;
+  var memo = {};
+  try {
+    var sheet = getSheet_(SHEETS.attendance);
+    var lastRow = sheet.getLastRow();
+    if (lastRow >= TABLE_FIRST_ROW) {
+      var vals = sheet.getRange(TABLE_FIRST_ROW, NAME_COL, lastRow - TABLE_FIRST_ROW + 1, 1).getValues();
+      for (var i = 0; i < vals.length; i++) {
+        var n = normalizeName_(vals[i][0]);
+        if (n) memo[n] = true;
+      }
+    }
+  } catch (e) {}
+  ROSTER_MEMO = memo;
+  return memo;
+}
+
 function findStudentRow_(sheet, student, nameCol, firstRow) {
   const needle = normalizeName_(student);
   if (!needle) return null;
@@ -223,7 +243,23 @@ function findStudentRow_(sheet, student, nameCol, firstRow) {
   for (let i = 0; i < values.length; i++) {
     if (normalizeName_(values[i][0]) === needle) return firstRow + i;
   }
-  return null;
+
+  // Birebir eşleşme yok: kelime bazlı ön ek eşleşmesi dene.
+  // "Abdullah Altun" ↔ "Abdullah", "Ömer" ↔ "Ömer İnal" gibi.
+  // Satırdaki isim, yoklama listesindeki BAŞKA bir öğrencinin tam adıysa atlanır
+  // (iki ayrı "Yiğit" / "Yiğit Hamza" öğrencisi karışmasın diye).
+  const roster = rosterNorms_();
+  let hit = null, count = 0;
+  for (let i = 0; i < values.length; i++) {
+    const nm = normalizeName_(values[i][0]);
+    if (!nm || nm === needle) continue;
+    const isPrefix = needle.indexOf(nm + ' ') === 0 || nm.indexOf(needle + ' ') === 0;
+    if (!isPrefix) continue;
+    if (roster[nm]) continue; // satır adı başka kayıtlı öğrencinin tam adı
+    hit = firstRow + i;
+    count++;
+  }
+  return count === 1 ? hit : null;
 }
 
 function normalizeName_(value) {
