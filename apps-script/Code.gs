@@ -22,6 +22,8 @@ const SHEETS = {
 
 const TABLE_FIRST_ROW = 5;
 const NAME_COL = 2;
+const AYLAR = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
+const TZ = 'Europe/Istanbul';
 
 function doGet() {
   return json_({ ok: true, message: 'Talebe Takip baglantisi hazir.' });
@@ -31,6 +33,8 @@ function doPost(e) {
   try {
     const payload = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     const changes = Array.isArray(payload.changes) ? payload.changes : [];
+
+    try { ensureTodayColumn_(); } catch (err) {}
 
     var readOnly = changes.every(function(c) {
       return c && (c.type === 'readAttendance' || c.type === 'readAllAttendance' || c.type === 'readStudent' || c.type === 'readVersion');
@@ -232,8 +236,7 @@ function normalizeHeader_(h) {
 }
 
 function dateToLabel_(d) {
-  var ay = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
-  return d.getDate() + ' ' + ay[d.getMonth()];
+  return d.getDate() + ' ' + AYLAR[d.getMonth()];
 }
 
 function readAttendance_(date) {
@@ -272,6 +275,35 @@ function readAttendance_(date) {
     if (val) data[allStudents[i]] = val;
   }
   return { ok: true, type: 'readAttendance', date: date, data: data, allStudents: allStudents };
+}
+
+function todayLabel_() {
+  var parts = Utilities.formatDate(new Date(), TZ, 'd:M:u').split(':');
+  var isoDay = Number(parts[2]);
+  if (isoDay >= 6) return null; // cumartesi/pazar: ders yok
+  return Number(parts[0]) + ' ' + AYLAR[Number(parts[1]) - 1];
+}
+
+function ensureTodayColumn_() {
+  var label = todayLabel_();
+  if (!label) return;
+  var cache = CacheService.getScriptCache();
+  var key = 'day_' + label;
+  if (cache.get(key)) return;
+  var lock = LockService.getDocumentLock();
+  lock.waitLock(30000);
+  try {
+    findOrAppendHeader_(getSheet_(SHEETS.attendance), label, 4, 2);
+  } finally {
+    lock.releaseLock();
+  }
+  cache.put(key, '1', 21600);
+  bumpVersion_();
+}
+
+function isDateLabel_(s) {
+  var m = String(s || '').match(/^(\d{1,2}) (\S+)$/);
+  return !!(m && Number(m[1]) >= 1 && Number(m[1]) <= 31 && AYLAR.indexOf(m[2]) >= 0);
 }
 
 function getVersion_() {
@@ -319,7 +351,7 @@ function readAllAttendance_() {
       var dataOffset = 4 - NAME_COL;
       for (var c = 0; c < headers.length; c++) {
         var label = normalizeHeader_(headers[c]);
-        if (!label) continue;
+        if (!label || !isDateLabel_(label)) continue; // özet kolonları (A–Z, Toplam vb.) tarih değil
         dates.push(label);
         for (var r = 0; r < allStudents.length; r++) {
           var v = String(block[r][dataOffset + c] || '').trim();
