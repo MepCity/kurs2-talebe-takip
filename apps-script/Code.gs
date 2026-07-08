@@ -33,7 +33,7 @@ function doPost(e) {
     const changes = Array.isArray(payload.changes) ? payload.changes : [];
 
     var readOnly = changes.every(function(c) {
-      return c && (c.type === 'readAttendance' || c.type === 'readAllAttendance' || c.type === 'readStudent');
+      return c && (c.type === 'readAttendance' || c.type === 'readAllAttendance' || c.type === 'readStudent' || c.type === 'readVersion');
     });
 
     var lock = null;
@@ -44,7 +44,8 @@ function doPost(e) {
 
     try {
       const results = changes.map(applyChange_);
-      return json_({ ok: true, applied: results.length, results });
+      var version = readOnly ? getVersion_() : bumpVersion_();
+      return json_({ ok: true, applied: results.length, results: results, version: version });
     } finally {
       if (lock) lock.releaseLock();
     }
@@ -79,6 +80,8 @@ function applyChange_(change) {
       return readAllAttendance_();
     case 'readStudent':
       return readStudent_(change.student);
+    case 'readVersion':
+      return { ok: true, type: 'readVersion', version: getVersion_() };
     default:
       return { ok: false, type: change.type, error: 'Bilinmeyen degisiklik tipi' };
   }
@@ -271,7 +274,30 @@ function readAttendance_(date) {
   return { ok: true, type: 'readAttendance', date: date, data: data, allStudents: allStudents };
 }
 
+function getVersion_() {
+  var cached = CacheService.getScriptCache().get('v');
+  if (cached != null) return Number(cached);
+  var v = PropertiesService.getScriptProperties().getProperty('v') || '0';
+  CacheService.getScriptCache().put('v', v, 21600);
+  return Number(v);
+}
+
+function bumpVersion_() {
+  var v = getVersion_() + 1;
+  PropertiesService.getScriptProperties().setProperty('v', String(v));
+  CacheService.getScriptCache().put('v', String(v), 21600);
+  return v;
+}
+
 function readAllAttendance_() {
+  var version = getVersion_();
+  var cache = CacheService.getScriptCache();
+  var cacheKey = 'att_' + version;
+  var hit = cache.get(cacheKey);
+  if (hit) {
+    try { return JSON.parse(hit); } catch (e) {}
+  }
+
   var sheet = getSheet_(SHEETS.attendance);
   var lastCol = sheet.getLastColumn();
   var lastRow = sheet.getLastRow();
@@ -306,11 +332,19 @@ function readAllAttendance_() {
     }
   }
 
-  return { ok: true, type: 'readAllAttendance', allStudents: allStudents, dates: dates, attendance: attendance };
+  var result = { ok: true, type: 'readAllAttendance', allStudents: allStudents, dates: dates, attendance: attendance, version: version };
+  try { cache.put(cacheKey, JSON.stringify(result), 120); } catch (e) {}
+  return result;
 }
 
 function readStudent_(student) {
   if (!student) return { ok: false, error: 'Ogrenci adi bos' };
+  var cache = CacheService.getScriptCache();
+  var cacheKey = 'stu_' + getVersion_() + '_' + Utilities.base64Encode(student, Utilities.Charset.UTF_8);
+  var hit = cache.get(cacheKey);
+  if (hit) {
+    try { return JSON.parse(hit); } catch (e) {}
+  }
   var result = { ok: true, type: 'readStudent', student: student, nurlu: {}, sure: {}, elifba: '', namaz: 0 };
 
   // Nurlu cards (4 sheets, 5 cards each, 4 items per card)
@@ -359,6 +393,7 @@ function readStudent_(student) {
     result.namaz = Number(namazSheet.getRange(namazRow, 3).getValue()) || 0;
   }
 
+  try { cache.put(cacheKey, JSON.stringify(result), 120); } catch (e) {}
   return result;
 }
 
