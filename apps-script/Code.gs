@@ -167,7 +167,7 @@ function findOrAppendHeader_(sheet, label, firstCol, headerRow) {
   const lastCol = Math.max(sheet.getLastColumn(), firstCol);
   const values = sheet.getRange(headerRow, firstCol, 1, Math.max(1, lastCol - firstCol + 1)).getValues()[0];
   for (let i = 0; i < values.length; i++) {
-    if (String(values[i] || '').trim() === clean) return firstCol + i;
+    if (normalizeHeader_(values[i]) === clean) return firstCol + i;
   }
   for (let i = 0; i < values.length; i++) {
     if (!String(values[i] || '').trim()) {
@@ -203,6 +203,22 @@ function normalizeName_(value) {
     .toLowerCase();
 }
 
+function normalizeHeader_(h) {
+  if (h instanceof Date && !isNaN(h.getTime())) return dateToLabel_(h);
+  var s = String(h || '').trim();
+  var m = s.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})$/);
+  if (m) {
+    var d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+    if (!isNaN(d.getTime())) return dateToLabel_(d);
+  }
+  return s;
+}
+
+function dateToLabel_(d) {
+  var ay = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
+  return d.getDate() + ' ' + ay[d.getMonth()];
+}
+
 function readAttendance_(date) {
   var sheet = getSheet_(SHEETS.attendance);
   var headerRow = TABLE_FIRST_ROW - 1;
@@ -213,7 +229,7 @@ function readAttendance_(date) {
   var col = -1;
   var clean = String(date || '').trim();
   for (var i = 0; i < headers.length; i++) {
-    if (String(headers[i] || '').trim() === clean) { col = 4 + i; break; }
+    if (normalizeHeader_(headers[i]) === clean) { col = 4 + i; break; }
   }
   if (col < 0) return { ok: true, type: 'readAttendance', date: date, data: {} };
 
