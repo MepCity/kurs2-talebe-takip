@@ -588,25 +588,11 @@ function isDateLabel_(s) {
   return !!(m && Number(m[1]) >= 1 && Number(m[1]) <= 31 && AYLAR.indexOf(m[2]) >= 0);
 }
 
-function getOrCreateSheet_(name, headers) {
-  var ss = aktifSS_();
-  var sheet = ss.getSheetByName(name);
-  if (!sheet) {
-    try {
-      sheet = ss.insertSheet(name);
-      if (headers && headers.length) sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-    } catch (e) {
-      sheet = ss.getSheetByName(name);
-      if (!sheet) throw e;
-    }
-  }
-  return sheet;
-}
-
 function addHoca_(name) {
   var clean = String(name || '').trim();
   if (!clean) return { ok: false, error: 'Hoca adi bos' };
-  var sheet = getOrCreateSheet_(SHEETS.hocalar, ['Hoca']);
+  var sheet = sheetOpt_(SHEETS.hocalar);
+  if (!sheet) return { ok: false, error: 'Hocalar sayfasi yok' };
   var lastRow = sheet.getLastRow();
   if (lastRow >= 2) {
     var vals = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
@@ -633,7 +619,8 @@ function findHocaRow_(sheet, name) {
 function renameHoca_(oldName, newName) {
   var nv = String(newName || '').trim();
   if (!nv) return { ok: false, error: 'Yeni isim bos' };
-  var sheet = getOrCreateSheet_(SHEETS.hocalar, ['Hoca']);
+  var sheet = sheetOpt_(SHEETS.hocalar);
+  if (!sheet) return { ok: false, error: 'Hocalar sayfasi yok' };
   if (findHocaRow_(sheet, nv)) return { ok: true, type: 'renameHoca', name: nv, existed: true };
   var row = findHocaRow_(sheet, oldName);
   if (row) {
@@ -645,7 +632,8 @@ function renameHoca_(oldName, newName) {
 }
 
 function removeHoca_(name) {
-  var sheet = getOrCreateSheet_(SHEETS.hocalar, ['Hoca']);
+  var sheet = sheetOpt_(SHEETS.hocalar);
+  if (!sheet) return { ok: false, error: 'Hocalar sayfasi yok' };
   var row = findHocaRow_(sheet, name);
   if (row) sheet.deleteRow(row);
   return { ok: true, type: 'removeHoca', name: String(name || ''), found: !!row };
@@ -660,7 +648,8 @@ function appendLogs_(changes) {
     rows.push([new Date(ts), String(c.hoca || ''), String(c.text)]);
   }
   if (!rows.length) return;
-  var sheet = getOrCreateSheet_(SHEETS.gecmis, ['Tarih', 'Hoca', 'İşlem']);
+  var sheet = sheetOpt_(SHEETS.gecmis);
+  if (!sheet) return; // sayfa yoksa gecmis tutulmaz, otomatik olusturulmaz
   sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, 3).setValues(rows);
 }
 
@@ -671,7 +660,8 @@ function logBulk_(entries) {
     return [new Date(ts), String((e && e[1]) || ''), String((e && e[2]) || '')];
   }).filter(function(r) { return r[2]; });
   if (!rows.length) return { ok: false, error: 'Bos liste' };
-  var sheet = getOrCreateSheet_(SHEETS.gecmis, ['Tarih', 'Hoca', 'İşlem']);
+  var sheet = sheetOpt_(SHEETS.gecmis);
+  if (!sheet) return { ok: false, error: 'İşlem Geçmişi sayfasi yok' };
   sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, 3).setValues(rows);
   return { ok: true, type: 'logBulk', added: rows.length };
 }
