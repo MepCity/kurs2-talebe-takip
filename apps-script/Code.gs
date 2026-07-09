@@ -36,7 +36,7 @@ const LOG_READ_LIMIT = 200;
  * spreadsheetId bos olan sinif, script'in bagli oldugu tabloyu kullanir.
  */
 const SINIFLAR = {
-  'findikli': { ad: 'Fındıklı', spreadsheetId: '', duzen: 'eski' },
+  'findikli': { ad: 'Fındıklı', spreadsheetId: '1vXnTCelrwNqbrnP0SNVbM8CN9zwFbOVc8iQ4jotZ8rQ', duzen: 'eski' },
   'mekke':    { ad: 'Mekke',    spreadsheetId: '1NFUNXgbxrnRZpGGg3IDTgKzu5keIi2HiYC_2YnUUIz4', duzen: 'yeni' },
   'medine':   { ad: 'Medine',   spreadsheetId: '1dfdqUp2wzxKNCFdolgyeYXobh6H_uo9AkA_VNZm9Sdg', duzen: 'yeni' },
   'kudus':    { ad: 'Kudüs',    spreadsheetId: '1ySOh6n4WiECBVjbwZs3J2TLgeKnUp5Lrnvayi6Betx8', duzen: 'yeni' },
