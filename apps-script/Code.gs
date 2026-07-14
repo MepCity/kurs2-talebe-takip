@@ -36,7 +36,7 @@ const LOG_READ_LIMIT = 200;
  * spreadsheetId bos olan sinif, script'in bagli oldugu tabloyu kullanir.
  */
 const SINIFLAR = {
-  'findikli': { ad: 'Fındıklı', spreadsheetId: '1vXnTCelrwNqbrnP0SNVbM8CN9zwFbOVc8iQ4jotZ8rQ', duzen: 'eski' },
+  'findikli': { ad: 'Fındıklı', spreadsheetId: '1xb1OqEZz-uGM6WDYEp_GIaSoh-5I05-DvtdYy4laRrI', duzen: 'eski' },
   'mekke':    { ad: 'Mekke',    spreadsheetId: '1NFUNXgbxrnRZpGGg3IDTgKzu5keIi2HiYC_2YnUUIz4', duzen: 'yeni' },
   'medine':   { ad: 'Medine',   spreadsheetId: '1dfdqUp2wzxKNCFdolgyeYXobh6H_uo9AkA_VNZm9Sdg', duzen: 'yeni' },
   'kudus':    { ad: 'Kudüs',    spreadsheetId: '1ySOh6n4WiECBVjbwZs3J2TLgeKnUp5Lrnvayi6Betx8', duzen: 'yeni' },
@@ -199,6 +199,8 @@ function applyChange_(change) {
       return readAttendance_(change.date);
     case 'readAllAttendance':
       return readAllAttendance_();
+    case 'readAllNurluSure':
+      return readAllNurluSure_();
     case 'readStudent':
       return readStudent_(change.student);
     case 'addHoca':
@@ -752,9 +754,10 @@ function readAllAttendance_() {
 
   if (rows > 0 && lastCol >= NAME_COL) {
     var block = sheet.getRange(TABLE_FIRST_ROW, NAME_COL, rows, lastCol - NAME_COL + 1).getValues();
+    var studentBlockRows = [];
     for (var k = 0; k < block.length; k++) {
       var n = String(block[k][0] || '').trim();
-      if (n) allStudents.push(n);
+      if (n) { allStudents.push(n); studentBlockRows.push(k); }
     }
 
     if (lastCol >= 4) {
@@ -765,7 +768,7 @@ function readAllAttendance_() {
         if (!label || !isDateLabel_(label)) continue; // özet kolonları (A–Z, Toplam vb.) tarih değil
         dates.push(label);
         for (var r = 0; r < allStudents.length; r++) {
-          var v = String(block[r][dataOffset + c] || '').trim();
+          var v = String(block[studentBlockRows[r]][dataOffset + c] || '').trim();
           if (v) {
             if (!attendance[allStudents[r]]) attendance[allStudents[r]] = {};
             attendance[allStudents[r]][label] = v;
@@ -787,6 +790,77 @@ function readAllAttendance_() {
     } };
   try { cache.put(cacheKey, JSON.stringify(result), 120); } catch (e) {}
   return result;
+}
+
+// Tum ogrencilerin Nurlu Kartlar + Ezber Takip verisini tek seferde doner
+// (Ozet sekmesindeki "kim ezberlemis" filtresi icin). Isim bazli okur,
+// findStudentRow_ kullanir (boS satirlardan etkilenmez, ayni yontem readStudent_'ta da var).
+function readAllNurluSure_() {
+  var students = [];
+  var attSheet = getSheet_(SHEETS.attendance);
+  var lastRow = attSheet.getLastRow();
+  if (lastRow >= TABLE_FIRST_ROW) {
+    var nameVals = attSheet.getRange(TABLE_FIRST_ROW, NAME_COL, lastRow - TABLE_FIRST_ROW + 1, 1).getValues();
+    for (var i = 0; i < nameVals.length; i++) {
+      var n = String(nameVals[i][0] || '').trim();
+      if (n) students.push(n);
+    }
+  }
+
+  var madde = nurluMadde_();
+  var nurlu = {};
+  for (var si = 0; si < SHEETS.nurlu.length; si++) {
+    var sheet = sheetOpt_(SHEETS.nurlu[si]);
+    if (!sheet) continue;
+    var lastCol = sheet.getLastColumn();
+    if (lastCol < 3) continue;
+    for (var s = 0; s < students.length; s++) {
+      var row = findStudentRow_(sheet, students[s], NAME_COL, TABLE_FIRST_ROW);
+      if (!row) continue;
+      var vals = sheet.getRange(row, 3, 1, lastCol - 2).getValues()[0];
+      for (var ci = 0; ci < 5; ci++) {
+        var cardNo = si * 5 + ci + 1;
+        for (var ii = 0; ii < madde; ii++) {
+          var colIdx = ci * madde + ii;
+          var v = String(vals[colIdx] || '').trim();
+          if (v) {
+            if (!nurlu[students[s]]) nurlu[students[s]] = {};
+            nurlu[students[s]]['c' + cardNo + '_' + ii] = v;
+          }
+        }
+      }
+    }
+  }
+
+  var sure = {};
+  var sureSheet = sheetOpt_(SHEETS.sure);
+  if (sureSheet) {
+    var sLastCol = sureSheet.getLastColumn();
+    if (sLastCol >= 3) {
+      for (var s2 = 0; s2 < students.length; s2++) {
+        var srow = findStudentRow_(sureSheet, students[s2], NAME_COL, TABLE_FIRST_ROW);
+        if (!srow) continue;
+        var svals = sureSheet.getRange(srow, 3, 1, sLastCol - 2).getValues()[0];
+        for (var j = 0; j < svals.length; j++) {
+          var sv = String(svals[j] || '').trim();
+          if (sv) {
+            if (!sure[students[s2]]) sure[students[s2]] = {};
+            sure[students[s2]][j] = sv;
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    ok: true,
+    type: 'readAllNurluSure',
+    students: students,
+    nurlu: nurlu,
+    sure: sure,
+    sureList: headerList_(SHEETS.sure),
+    nurluMadde: madde
+  };
 }
 
 function readStudent_(student) {
